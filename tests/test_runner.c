@@ -36,10 +36,12 @@ static void test_runner(void **state)
         json_object *jschema = json_object_object_get(iobj, "schema");
         json_object *jtests = json_object_object_get(iobj, "tests");
         assert_non_null(jcasedescription);
-        assert_non_null(jschema);
         assert_non_null(jtests);
         assert_int_equal(json_object_is_type(jcasedescription, json_type_string), 1);
-        assert_int_equal(json_object_is_type(jschema, json_type_object), 1);
+        /* schema can be object or boolean (Draft-07 boolean schemas) */
+        json_bool schema_ok = json_object_is_type(jschema, json_type_object) ||
+                              json_object_is_type(jschema, json_type_boolean);
+        assert_int_equal(schema_ok, 1);
         assert_int_equal(json_object_is_type(jtests, json_type_array), 1);
 
         printf("case: %s\n", json_object_get_string(jcasedescription));

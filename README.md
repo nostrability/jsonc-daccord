@@ -2,6 +2,19 @@
 
 jsonc-daccord is a JSON Schema validation library written in C, and is taking advantage of the json-c library.
 
+## Nostrability Fork
+
+This is the [nostrability](https://github.com/nostrability) fork of [domoslabs/jsonc-daccord](https://github.com/domoslabs/jsonc-daccord), adding Draft-07 keyword support needed by [`schemata-validator-c`](https://github.com/nostrability/schemata-validator-c).
+
+**What the fork adds:**
+
+- **Draft-07 keywords:** `items` array + `additionalItems`, `contains` fix, `dependencies`, `definitions`, boolean schemas, `maxProperties`/`minProperties`
+- **`jdac_validate_ex()`:** exposes the output tree to the caller for structured error extraction
+- **Safety hardening:** all `strcpy` -> `snprintf`, `sprintf` -> `snprintf`, recursion depth limit (64)
+- **macOS fixes:** `pkg_check_modules` for json-c/cmocka, skip `--wrap` tests on Apple
+
+**JSON Schema Test Suite results:** 35/39 files pass (90%). Remaining: `ref`, `refRemote`, `definitions` (meta-schema), `unknownKeyword` (`$id` scoping).
+
 ## Design Goals
 
 The goal is to have a lightweight JSON Schema validation implementation in C using json-c.
@@ -14,13 +27,13 @@ Supported schema keywords:
 | object type | feature                                                                   |
 | :---------- | :------------------------------------------------------------------------ |
 | all         | type, enum, required, properties, const                                   |
-| object      | dependentRequired, propertyNames, patternProperties, additionalProperties |
+| object      | dependentRequired, propertyNames, patternProperties, additionalProperties, dependencies, maxProperties, minProperties |
 | string      | minLength, maxLength                                                      |
 | numbers     | minimum, maximum, multipleOf, exclusiveMinimum, exclusiveMaximum          |
-| boolean     | additionalProperties                                                      |
-| array       | minItems, maxItems, uniqeItems, items                                     |
+| boolean     | additionalProperties, boolean schemas (`true`/`false`)                    |
+| array       | minItems, maxItems, uniqueItems, items, items (tuple), additionalItems, contains |
 
-Other: $defs, $ref
+Other: $defs, definitions, $ref
 
 ## Example Use
 
@@ -31,10 +44,13 @@ See [jsoncdaccord.h](include/jsoncdaccord.h)
 ```C
     int jdac_validate_file(const char *jsonfile, const char *jsonschemafile);
     int jdac_validate(json_object *jobj, json_object *jschema);
+    int jdac_validate_ex(json_object *jobj, json_object *jschema, json_object **joutput_out);
     int jdac_ref_set_localpath(const char *_localpath);
 
     const char* jdac_errorstr(unsigned int jdac_errors);
 ```
+
+`jdac_validate_ex()` returns `JDAC_ERR_VALID` (0) on success or a `jdac_errors` code on failure. On success, `*joutput_out` receives a `json_object *` output tree that the **caller owns** and must free with `json_object_put()`. On failure, `*joutput_out` is unmodified.
 
 Link your binary to: `-ljsoncdac -ljson-c`
 

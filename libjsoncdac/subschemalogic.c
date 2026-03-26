@@ -31,16 +31,20 @@ int _jdac_test_subschema_array(json_object *jobj, json_object *jsubschema_array,
             return JDAC_ERR_SCHEMA_ERROR;
         }
 
-        json_object *some_node = _jdac_output_create_node("some");
+        char idx[16];
+        snprintf(idx, sizeof(idx), "%d", i);
+        json_object *some_node = _jdac_output_create_node(idx);
         int err = _jdac_validate_instance(jobj, jsubschema, some_node);
-        json_object_put(some_node); // we don't need it anyway
 
         if (err == JDAC_ERR_VALID) {
             number_of_valid_schemas++;
+            json_object_put(some_node);
         } else if (err == JDAC_ERR_SCHEMA_ERROR) {
+            json_object_put(some_node);
             return JDAC_ERR_SCHEMA_ERROR;
         } else {
-            // continue
+            _jdac_output_apply_result(some_node, err);
+            _jdac_output_append_node(joutput_node, some_node);
         }
     }
 

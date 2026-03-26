@@ -52,7 +52,9 @@ target_link_libraries(jdac_test PUBLIC curl m cmocka json-c)
 target_compile_definitions(jdac_test PRIVATE ${jdacopts_all})
 
 addtest(test-flows.c     SOURCES "" LIBS jdac_test )
-addtest(test-validate.c  SOURCES "" LIBS jdac_test WRAPFUNCTIONS json_object_from_file )
+if (NOT APPLE)
+  addtest(test-validate.c  SOURCES "" LIBS jdac_test WRAPFUNCTIONS json_object_from_file )
+endif()
 addtest(test-dependent.c SOURCES "" LIBS jdac_test )
 
 # Test JSON Schema Test Suite
@@ -66,6 +68,14 @@ if (JDAC_RUN_TEST_SUITE)
 
   foreach(ITEM ${DRAFT2020_12})
     get_filename_component(test_name ${ITEM} NAME_WE)
-    addtest(test_runner.c TESTNAME ${test_name} LIBS cmocka json-c jsoncdaccord_shared RUNNERARGS ${CMAKE_BINARY_DIR}/tests/JSON-Schema-Test-Suite/tests/${ITEM})
+    addtest(test_runner.c TESTNAME d2020_${test_name} LIBS jdac_test RUNNERARGS ${CMAKE_BINARY_DIR}/tests/JSON-Schema-Test-Suite/tests/${ITEM})
+  endforeach()
+
+  # Draft-07 test suite
+  file(GLOB DRAFT7 RELATIVE "${PROJECT_SOURCE_DIR}/tests/JSON-Schema-Test-Suite/tests/" "${PROJECT_SOURCE_DIR}/tests/JSON-Schema-Test-Suite/tests/draft7/*.json")
+
+  foreach(ITEM ${DRAFT7})
+    get_filename_component(test_name ${ITEM} NAME_WE)
+    addtest(test_runner.c TESTNAME d7_${test_name} LIBS jdac_test RUNNERARGS ${CMAKE_BINARY_DIR}/tests/JSON-Schema-Test-Suite/tests/${ITEM})
   endforeach()
 endif ()

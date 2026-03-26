@@ -1,6 +1,16 @@
 #ifndef JSONCDACCORD_H
 #define JSONCDACCORD_H
 
+/**
+ * NOT THREAD SAFE. This library uses global mutable state:
+ *   - json_object *json, *schema, *defs  (validate.c)
+ *   - static int _jdac_recursion_depth   (validate.c)
+ *   - static storage_node *storagelist_head (validate.c, when JDAC_STORE enabled)
+ *
+ * Concurrent calls from multiple threads will corrupt state or crash.
+ * The defs pointer is reset at the start of each jdac_validate_ex() call.
+ */
+
 #include <json-c/json.h>
 
 enum jdac_errors {
@@ -19,6 +29,7 @@ enum jdac_errors {
 
 int jdac_validate_file(const char *jsonfile, const char *jsonschemafile);
 int jdac_validate(json_object *jobj, json_object *jschema);
+int jdac_validate_ex(json_object *jobj, json_object *jschema, json_object **joutput_out);
 int jdac_ref_set_localpath(const char *_localpath);
 
 const char *jdac_errorstr(unsigned int jdac_errors);

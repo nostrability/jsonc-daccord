@@ -9,7 +9,13 @@ char localpath[256] = {0};
 
 int jdac_ref_set_localpath(const char *_localpath)
 {
-    strcpy(localpath, _localpath);
+    if (!_localpath)
+        return JDAC_ERR_WRONG_ARGS;
+    int n = snprintf(localpath, sizeof(localpath), "%s", _localpath);
+    if (n < 0 || (size_t)n >= sizeof(localpath)) {
+        localpath[0] = '\0';
+        return JDAC_ERR_GENERAL_ERROR;
+    }
     return JDAC_ERR_VALID;
 }
 
