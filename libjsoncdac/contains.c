@@ -29,7 +29,7 @@ int _jdac_check_contains_and_minmaxcontains(json_object *jobj, json_object *jsch
     for (int i = 0; i < arraylen; i++) {
         json_object *iobj = json_object_array_get_idx(jobj, i);
         char numstr[11];
-        sprintf(numstr, "%d", i);
+        snprintf(numstr, sizeof(numstr), "%d", i);
         json_object *iobj_node_tmp = _jdac_output_create_node(numstr);
 
         err = _jdac_validate_instance(iobj, jcontains, iobj_node_tmp);
@@ -68,6 +68,9 @@ int _jdac_check_contains_and_minmaxcontains(json_object *jobj, json_object *jsch
             _jdac_output_apply_result(jmincont_node, JDAC_ERR_INVALID);
             mincontains_ok = 0;
         }
+    } else if (!jmaxcontains && match_count == 0) {
+        /* contains without minContains/maxContains requires >= 1 match */
+        mincontains_ok = 0;
     }
 
     int ret = maxcontains_ok == 1 && mincontains_ok == 1 ? JDAC_ERR_VALID : JDAC_ERR_INVALID;

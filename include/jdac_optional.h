@@ -22,6 +22,7 @@ int _jdac_check_additionalproperties       (json_object *jobj, json_object *jsch
 int _jdac_check_propertynames              (json_object *jobj, json_object *jschema, json_object *joutput_node);
 int _jdac_check_subschemalogic             (json_object *jobj, json_object *jschema, json_object *joutput_node);
 int _jdac_check_contains_and_minmaxcontains(json_object *jobj, json_object *jschema, json_object *joutput_node);
+int _jdac_check_dependencies(json_object *jobj, json_object *jschema, json_object *joutput_node);
 // clang-format off
 
 char *_jdac_download_schema(const char *url);

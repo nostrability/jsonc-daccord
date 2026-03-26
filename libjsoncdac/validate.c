@@ -12,6 +12,10 @@ json_object *json = NULL;
 json_object *schema = NULL;
 json_object *defs = NULL;
 
+/* NOT THREAD SAFE — global recursion depth counter */
+#define JDAC_MAX_RECURSION_DEPTH 64
+static int _jdac_recursion_depth = 0;
+
 #ifdef JDAC_STORE
 static storage_node *storagelist_head = NULL;
 #endif
@@ -214,10 +218,13 @@ int _jdac_check_prefixItems_and_items(json_object *jobj, json_object *jschema,
 {
     json_object *jprefixitems = json_object_object_get(jschema, "prefixItems");
     json_object *jitems = json_object_object_get(jschema, "items");
+    json_object *jadditionalitems = json_object_object_get(jschema, "additionalItems");
 
     int prefixitems_ok = 1;
     int items_ok = 1;
+    int tuple_count = 0; /* number of tuple-validated positions */
 
+    /* 2020-12: prefixItems is an array of per-position schemas */
     if (jprefixitems) {
         json_object *jprefixitems_node =
             _jdac_output_create_and_append_node(joutput_node, "prefixItems");
@@ -229,13 +236,13 @@ int _jdac_check_prefixItems_and_items(json_object *jobj, json_object *jschema,
 
         int jobj_arraylen = json_object_array_length(jobj);
         int prefixitems_arraylen = json_object_array_length(jprefixitems);
+        tuple_count = prefixitems_arraylen;
         for (int i = 0; i < jobj_arraylen && i < prefixitems_arraylen; i++) {
-            // printf("i=%d prefixitems\n", i);
             json_object *iobj = json_object_array_get_idx(jobj, i);
             json_object *ischema = json_object_array_get_idx(jprefixitems, i);
 
             char numstr[11];
-            sprintf(numstr, "%d", i);
+            snprintf(numstr, sizeof(numstr), "%d", i);
             json_object *jarrayitem_tmp_node = _jdac_output_create_node(numstr);
 
             int err = _jdac_validate_instance(iobj, ischema, jarrayitem_tmp_node);
@@ -252,34 +259,113 @@ int _jdac_check_prefixItems_and_items(json_object *jobj, json_object *jschema,
     }
 
     if (jitems) {
-        json_object *jitems_node = _jdac_output_create_and_append_node(joutput_node, "items");
+        if (json_object_is_type(jitems, json_type_array)) {
+            /*
+             * Draft-07 tuple form: "items" is an array of per-position schemas.
+             * Validate each array element against its positional schema.
+             * Elements beyond the tuple are handled by "additionalItems".
+             */
+            json_object *jitems_node =
+                _jdac_output_create_and_append_node(joutput_node, "items");
 
-        if (!json_object_is_type(jitems, json_type_object) &&
-            !json_object_is_type(jitems, json_type_boolean)) {
+            int jobj_arraylen = json_object_array_length(jobj);
+            int items_arraylen = json_object_array_length(jitems);
+            tuple_count = items_arraylen;
+
+            for (int i = 0; i < jobj_arraylen && i < items_arraylen; i++) {
+                json_object *iobj = json_object_array_get_idx(jobj, i);
+                json_object *ischema = json_object_array_get_idx(jitems, i);
+
+                char numstr[11];
+                snprintf(numstr, sizeof(numstr), "%d", i);
+                json_object *jarrayitem_tmp_node = _jdac_output_create_node(numstr);
+
+                int err = _jdac_validate_instance(iobj, ischema, jarrayitem_tmp_node);
+                if (err) {
+                    _jdac_output_apply_result(jitems_node, err);
+                    _jdac_output_append_node(jitems_node, jarrayitem_tmp_node);
+                    items_ok = 0;
+                } else {
+                    json_object_put(jarrayitem_tmp_node);
+                }
+            }
+
+            /* Draft-07 additionalItems: controls elements beyond the tuple */
+            if (jadditionalitems && jobj_arraylen > items_arraylen) {
+                if (json_object_is_type(jadditionalitems, json_type_boolean)) {
+                    if (json_object_get_boolean(jadditionalitems) == 0) {
+                        /* additionalItems: false — no extra items allowed */
+                        json_object *jadd_node =
+                            _jdac_output_create_and_append_node(joutput_node, "additionalItems");
+                        _jdac_output_apply_result(jadd_node, JDAC_ERR_INVALID);
+                        items_ok = 0;
+                    }
+                    /* additionalItems: true — extras allowed, no validation */
+                } else if (json_object_is_type(jadditionalitems, json_type_object)) {
+                    /* additionalItems is a schema — validate extras against it */
+                    for (int i = items_arraylen; i < jobj_arraylen; i++) {
+                        json_object *iobj = json_object_array_get_idx(jobj, i);
+                        char numstr[11];
+                        snprintf(numstr, sizeof(numstr), "%d", i);
+                        json_object *jarrayitem_tmp_node = _jdac_output_create_node(numstr);
+
+                        int err = _jdac_validate_instance(iobj, jadditionalitems,
+                                                          jarrayitem_tmp_node);
+                        if (err) {
+                            _jdac_output_apply_result(jarrayitem_tmp_node, err);
+                            _jdac_output_append_node(jitems_node, jarrayitem_tmp_node);
+                            items_ok = 0;
+                        } else {
+                            json_object_put(jarrayitem_tmp_node);
+                        }
+                    }
+                }
+            }
+
+            int items_ret = (items_ok == 1) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
+            _jdac_output_apply_result(jitems_node, items_ret);
+        } else if (json_object_is_type(jitems, json_type_object) ||
+                   json_object_is_type(jitems, json_type_boolean)) {
+            /*
+             * 2020-12 / Draft-07 single-schema form:
+             * In 2020-12: "items" validates elements beyond prefixItems.
+             * In Draft-07: "items" as object validates ALL elements.
+             */
+            json_object *jitems_node =
+                _jdac_output_create_and_append_node(joutput_node, "items");
+
+            int jobj_arraylen = json_object_array_length(jobj);
+            /* If prefixItems was used, start after those positions */
+            int start = (jprefixitems) ? tuple_count : 0;
+            for (int i = start; i < jobj_arraylen; i++) {
+                json_object *iobj = json_object_array_get_idx(jobj, i);
+                char numstr[11];
+                snprintf(numstr, sizeof(numstr), "%d", i);
+                json_object *jarrayitem_tmp_node = _jdac_output_create_node(numstr);
+                int err = _jdac_validate_instance(iobj, jitems, jarrayitem_tmp_node);
+                if (err) {
+                    _jdac_output_apply_result(jarrayitem_tmp_node, err);
+                    _jdac_output_append_node(jitems_node, jarrayitem_tmp_node);
+                    items_ok = 0;
+                } else {
+                    json_object_put(jarrayitem_tmp_node);
+                }
+            }
+            int items_ret = (items_ok == 1) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
+            _jdac_output_apply_result(jitems_node, items_ret);
+        } else {
+            json_object *jitems_node =
+                _jdac_output_create_and_append_node(joutput_node, "items");
             _jdac_output_apply_result(jitems_node, JDAC_ERR_SCHEMA_ERROR);
             return JDAC_ERR_SCHEMA_ERROR;
         }
-
-        int jobj_arraylen = json_object_array_length(jobj);
-        int items_arraylen = 0;
-        for (int i = items_arraylen; i < jobj_arraylen; i++) {
-            // printf("i=%d items\n", i);
-            json_object *iobj = json_object_array_get_idx(jobj, i);
-            char numstr[11];
-            sprintf(numstr, "%d", i);
-            json_object *jarrayitem_tmp_node = _jdac_output_create_node(numstr);
-            int err = _jdac_validate_instance(iobj, jitems, jarrayitem_tmp_node);
-            if (err) {
-                _jdac_output_apply_result(jarrayitem_tmp_node, err);
-                _jdac_output_append_node(jitems_node, jarrayitem_tmp_node);
-                items_ok = 0;
-            } else {
-                json_object_put(jarrayitem_tmp_node);
-            }
-        }
-        int items_ret = (items_ok == 1) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
-        _jdac_output_apply_result(jitems_node, items_ret);
+    } else if (jadditionalitems && jprefixitems == NULL) {
+        /*
+         * Draft-07: additionalItems without items has no effect per spec,
+         * but if items was not present as array, additionalItems is ignored.
+         */
     }
+
     int ret = (prefixitems_ok == 1 && items_ok == 1) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
     return ret;
 }
@@ -392,7 +478,7 @@ int _jdac_check_uniqueItems(json_object *jobj, json_object *jschema, json_object
             if (json_object_equal(iobj, uobj) == 1) {
                 uniqueitems_ok = 0;
                 char numstr[11];
-                sprintf(numstr, "%d", i);
+                snprintf(numstr, sizeof(numstr), "%d", i);
                 json_object *jnotunique_node =
                     _jdac_output_create_and_append_node(juniqueitems_node, numstr);
                 _jdac_output_apply_result(jnotunique_node, JDAC_ERR_INVALID);
@@ -472,6 +558,33 @@ int _jdac_validate_object(json_object *jobj, json_object *jschema, json_object *
     int err;
     if (defs == NULL)
         defs = json_object_object_get(jschema, "$defs");
+    if (defs == NULL)
+        defs = json_object_object_get(jschema, "definitions");
+
+    /* maxProperties / minProperties */
+    {
+        int prop_count = json_object_object_length(jobj);
+        json_object *jmaxprops = json_object_object_get(jschema, "maxProperties");
+        if (jmaxprops) {
+            int maxp = json_object_get_int(jmaxprops);
+            if (prop_count > maxp) {
+                json_object *jnode =
+                    _jdac_output_create_and_append_node(joutput_node, "maxProperties");
+                _jdac_output_apply_result(jnode, JDAC_ERR_INVALID);
+                return JDAC_ERR_INVALID;
+            }
+        }
+        json_object *jminprops = json_object_object_get(jschema, "minProperties");
+        if (jminprops) {
+            int minp = json_object_get_int(jminprops);
+            if (prop_count < minp) {
+                json_object *jnode =
+                    _jdac_output_create_and_append_node(joutput_node, "minProperties");
+                _jdac_output_apply_result(jnode, JDAC_ERR_INVALID);
+                return JDAC_ERR_INVALID;
+            }
+        }
+    }
 
     err = _jdac_check_required(jobj, jschema, joutput_node);
     if (err)
@@ -483,6 +596,10 @@ int _jdac_validate_object(json_object *jobj, json_object *jschema, json_object *
 
 #ifdef JDAC_DEPENDENT
     err = _jdac_check_dependentrequired(jobj, jschema, joutput_node);
+    if (err)
+        return err;
+
+    err = _jdac_check_dependencies(jobj, jschema, joutput_node);
     if (err)
         return err;
 #endif
@@ -686,62 +803,78 @@ int _jdac_validate_boolean(json_object *jobj, json_object *jschema, json_object 
 int _jdac_validate_instance(json_object *jobj, json_object *jschema, json_object *joutput_node)
 {
     int err;
-    // printf("--validate instance--\n");
-    // printf("%s\n", json_object_get_string(jobj));
-    // printf("%s\n", json_object_get_string(jschema));
+
+    if (_jdac_recursion_depth >= JDAC_MAX_RECURSION_DEPTH) {
+        json_object *jnode = _jdac_output_create_and_append_node(joutput_node, "recursionLimit");
+        _jdac_output_apply_result(jnode, JDAC_ERR_GENERAL_ERROR);
+        return JDAC_ERR_GENERAL_ERROR;
+    }
+    _jdac_recursion_depth++;
 
 #ifdef JDAC_REF
     err = _jdac_check_ref(jobj, jschema, storagelist_head, joutput_node);
     if (err)
-        return err;
+        goto done;
 #endif
 
-    err = _jdac_check_bool(jobj, jschema, joutput_node);
-    if (err)
-        return err;
+    /* Boolean schemas: true = always valid, false = always invalid.
+       Must exit early for both cases to avoid treating boolean as object. */
+    if (json_object_is_type(jschema, json_type_boolean)) {
+        err = json_object_get_boolean(jschema) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
+        goto done;
+    }
 
     err = _jdac_check_type(jobj, jschema, joutput_node);
     if (err)
-        return err;
+        goto done;
 
     err = _jdac_check_const(jobj, jschema, joutput_node);
     if (err)
-        return err;
+        goto done;
 
     err = _jdac_check_enums(jobj, jschema, joutput_node);
     if (err)
-        return err;
+        goto done;
 
 #ifdef JDAC_SUBSCHEMALOGIC
     err = _jdac_check_subschemalogic(jobj, jschema, joutput_node);
     if (err)
-        return err;
+        goto done;
 #endif
 
     json_type type = json_object_get_type(jobj);
 
     if (type == json_type_object)
-        return _jdac_validate_object(jobj, jschema, joutput_node);
+        err = _jdac_validate_object(jobj, jschema, joutput_node);
     else if (type == json_type_array)
-        return _jdac_validate_array(jobj, jschema, joutput_node);
+        err = _jdac_validate_array(jobj, jschema, joutput_node);
     else if (type == json_type_string)
-        return _jdac_validate_string(jobj, jschema, joutput_node);
+        err = _jdac_validate_string(jobj, jschema, joutput_node);
     else if (type == json_type_boolean)
-        return _jdac_validate_boolean(jobj, jschema, joutput_node);
+        err = _jdac_validate_boolean(jobj, jschema, joutput_node);
     else if (type == json_type_int)
-        return _jdac_validate_integer(jobj, jschema, joutput_node);
+        err = _jdac_validate_integer(jobj, jschema, joutput_node);
     else if (type == json_type_double)
-        return _jdac_validate_double(jobj, jschema, joutput_node);
+        err = _jdac_validate_double(jobj, jschema, joutput_node);
     else if (type == json_type_null)
-        return JDAC_ERR_VALID;
+        err = JDAC_ERR_VALID;
     else
         printf("%s: WARN: type %d not handled\n", __func__, type);
 
-    return JDAC_ERR_VALID;
+done:
+    _jdac_recursion_depth--;
+    return err;
 }
 
 int jdac_validate(json_object *jobj, json_object *jschema)
 {
+    _jdac_recursion_depth = 0;
+
+    /* Handle boolean schemas (Draft-07): true = always valid, false = always invalid */
+    if (json_object_is_type(jschema, json_type_boolean)) {
+        return json_object_get_boolean(jschema) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
+    }
+
 #ifdef JDAC_STORE
     _jdac_store_traverse_json(&storagelist_head, jschema, NULL);
     _jdac_store_print(storagelist_head);

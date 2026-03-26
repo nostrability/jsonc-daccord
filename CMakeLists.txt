@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 project (jsonc-daccord LANGUAGES C VERSION "0.5.99")
 
 option(JDAC_RUN_TEST_SUITE     "Run JSON-Schema-org's test suite" OFF)
@@ -26,9 +26,12 @@ list(APPEND OPTIONAL_ON_DEFAULT
   store
 )
 
-list(APPEND OPTIONAL_OFF_DEFAULT
+list(APPEND OPTIONAL_ON_DEFAULT
   pattern
   patternproperties
+)
+
+list(APPEND OPTIONAL_OFF_DEFAULT
   download
 )
 
@@ -41,10 +44,11 @@ set(CMAKE_BUILD_TYPE Release)
 endif()
 string(TOLOWER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
 
-find_library(JSONC_LIBRARY NAMES libjson-c.so)
-if (NOT JSONC_LIBRARY)
-message(FATAL_ERROR "libjson-c.so not found!")
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONC REQUIRED json-c)
+include_directories(${JSONC_INCLUDE_DIRS})
+link_directories(${JSONC_LIBRARY_DIRS})
+set(JSONC_LIBRARY ${JSONC_LIBRARIES})
 
 if (JDAC_STATIC_ANALYZER)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fanalyzer")
@@ -60,10 +64,9 @@ if (JDAC_RUN_TESTS AND NOT (BUILD_TYPE STREQUAL "debug"))
 endif ()
 
 if (JDAC_RUN_TESTS)
-  find_library(CMOCKA_LIBRARY NAMES libcmocka.so)
-  if (NOT CMOCKA_LIBRARY)
-    message(FATAL_ERROR "Could not find the cmocka library! Try: libcmocka-dev")
-  endif()
+  pkg_check_modules(CMOCKA REQUIRED cmocka)
+  include_directories(${CMOCKA_INCLUDE_DIRS})
+  link_directories(${CMOCKA_LIBRARY_DIRS})
   include(CTest)
   enable_testing()
   add_subdirectory(tests)

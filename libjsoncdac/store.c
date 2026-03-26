@@ -36,10 +36,10 @@ int _jdac_store_traverse_json(storage_node **head, json_object *jschema, char *p
     storage_node node = {0};
 
     if (pathbuffer == NULL) {
-        strcpy(pathbuf, "#/");
+        snprintf(pathbuf, sizeof(pathbuf), "#/");
         node.is_root = 1;
     } else {
-        strcpy(pathbuf, pathbuffer);
+        snprintf(pathbuf, sizeof(pathbuf), "%s", pathbuffer);
         node.is_root = 0;
     }
     node.json_instance_ptr = jschema;
@@ -49,19 +49,20 @@ int _jdac_store_traverse_json(storage_node **head, json_object *jschema, char *p
     json_object *jdynamicanchor = json_object_object_get(jschema, "$dynamicAnchor");
 
     if (jid) {
-        strcpy(node.id, json_object_get_string(jid));
+        snprintf(node.id, sizeof(node.id), "%s", json_object_get_string(jid));
     }
 
     if (janchor) {
-        strcpy(node.anchor, json_object_get_string(janchor));
+        snprintf(node.anchor, sizeof(node.anchor), "%s", json_object_get_string(janchor));
     }
 
     if (jdynamicanchor) {
-        strcpy(node.dynamicAnchor, json_object_get_string(jdynamicanchor));
+        snprintf(node.dynamicAnchor, sizeof(node.dynamicAnchor), "%s",
+                 json_object_get_string(jdynamicanchor));
     }
 
     // if (jid || janchor || jdynamicanchor || node.is_root==1) {
-    strcpy(node.JSONPtrURI, pathbuf);
+    snprintf(node.JSONPtrURI, sizeof(node.JSONPtrURI), "%s", pathbuf);
     node.json_schema_ptr = jschema;
     _jdac_store_append(head, &node);
     // }
@@ -74,9 +75,9 @@ int _jdac_store_traverse_json(storage_node **head, json_object *jschema, char *p
                 continue;
 
             if (pathbuffer == NULL)
-                sprintf(pathbuf, "#/%s", jkey);
+                snprintf(pathbuf, sizeof(pathbuf), "#/%s", jkey);
             else
-                sprintf(pathbuf, "%s/%s", pathbuffer, jkey);
+                snprintf(pathbuf, sizeof(pathbuf), "%s/%s", pathbuffer, jkey);
             // printf("%s\n", pathbuf);
             _jdac_store_traverse_json(head, jval, pathbuf);
         }
