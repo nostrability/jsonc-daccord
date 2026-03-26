@@ -30,6 +30,7 @@ enum jdac_errors {
 
 int jdac_validate_file(const char *jsonfile, const char *jsonschemafile);
 int jdac_validate(json_object *jobj, json_object *jschema);
+int jdac_validate_ex(json_object *jobj, json_object *jschema, json_object **joutput_out);
 int jdac_ref_set_localpath(const char *_localpath);
 
 const char *jdac_errorstr(unsigned int jdac_errors);

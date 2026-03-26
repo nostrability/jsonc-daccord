@@ -866,12 +866,15 @@ done:
     return err;
 }
 
-int jdac_validate(json_object *jobj, json_object *jschema)
+int jdac_validate_ex(json_object *jobj, json_object *jschema, json_object **joutput_out)
 {
     _jdac_recursion_depth = 0;
+    defs = NULL;
 
     /* Handle boolean schemas (Draft-07): true = always valid, false = always invalid */
     if (json_object_is_type(jschema, json_type_boolean)) {
+        if (joutput_out)
+            *joutput_out = NULL;
         return json_object_get_boolean(jschema) ? JDAC_ERR_VALID : JDAC_ERR_INVALID;
     }
 
@@ -884,17 +887,25 @@ int jdac_validate(json_object *jobj, json_object *jschema)
     int err = _jdac_validate_instance(jobj, jschema, joutput);
     _jdac_output_apply_result(joutput, err);
 
-    if (joutput) {
-        // printf("Basic Output: %s\n", json_object_get_string(joutput));
-        _jdac_output_print_errors(joutput);
+    if (joutput_out != NULL) {
+        /* Caller takes ownership of the output tree */
+        *joutput_out = joutput;
+    } else {
+        if (joutput) {
+            _jdac_output_print_errors(joutput);
+            json_object_put(joutput);
+        }
     }
 
 #ifdef JDAC_STORE
     _jdac_store_free(&storagelist_head);
 #endif
-    if (joutput)
-        json_object_put(joutput);
     return err;
+}
+
+int jdac_validate(json_object *jobj, json_object *jschema)
+{
+    return jdac_validate_ex(jobj, jschema, NULL);
 }
 
 int jdac_validate_file(const char *jsonfile, const char *jsonschemafile)
