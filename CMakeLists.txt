@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.7)
 project (jsonc-daccord LANGUAGES C VERSION "0.5.99")
 
 option(JDAC_RUN_TEST_SUITE     "Run JSON-Schema-org's test suite" OFF)
@@ -49,6 +49,11 @@ pkg_check_modules(JSONC REQUIRED json-c)
 include_directories(${JSONC_INCLUDE_DIRS})
 link_directories(${JSONC_LIBRARY_DIRS})
 set(JSONC_LIBRARY ${JSONC_LIBRARIES})
+
+if (JDAC_USE_ASAN)
+  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address)
+endif ()
 
 if (JDAC_STATIC_ANALYZER)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fanalyzer")

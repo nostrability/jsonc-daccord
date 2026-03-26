@@ -8,8 +8,7 @@
  *   - static storage_node *storagelist_head (validate.c, when JDAC_STORE enabled)
  *
  * Concurrent calls from multiple threads will corrupt state or crash.
- * The defs pointer may also leak across sequential jdac_validate() calls
- * if one schema sets definitions and the next does not clear them.
+ * The defs pointer is reset at the start of each jdac_validate_ex() call.
  */
 
 #include <json-c/json.h>

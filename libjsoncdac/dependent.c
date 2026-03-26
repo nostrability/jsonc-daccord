@@ -97,8 +97,13 @@ int _jdac_check_dependencies(json_object *jobj, json_object *jschema,
             int arraylen = json_object_array_length(dep_val);
             for (int i = 0; i < arraylen; i++) {
                 json_object *jitem = json_object_array_get_idx(dep_val, i);
-                if (!json_object_is_type(jitem, json_type_string))
-                    continue;
+                if (!json_object_is_type(jitem, json_type_string)) {
+                    json_object *jfail_node =
+                        _jdac_output_create_and_append_node(jdeps_node, dep_key);
+                    _jdac_output_apply_result(jfail_node, JDAC_ERR_SCHEMA_ERROR);
+                    _jdac_output_apply_result(jdeps_node, JDAC_ERR_SCHEMA_ERROR);
+                    return JDAC_ERR_SCHEMA_ERROR;
+                }
                 const char *required_key = json_object_get_string(jitem);
                 json_object *jcheck = NULL;
                 if (!json_object_object_get_ex(jobj, required_key, &jcheck)) {

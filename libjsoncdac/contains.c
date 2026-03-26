@@ -68,8 +68,8 @@ int _jdac_check_contains_and_minmaxcontains(json_object *jobj, json_object *jsch
             _jdac_output_apply_result(jmincont_node, JDAC_ERR_INVALID);
             mincontains_ok = 0;
         }
-    } else if (!jmaxcontains && match_count == 0) {
-        /* contains without minContains/maxContains requires >= 1 match */
+    } else if (match_count == 0) {
+        /* contains without minContains requires >= 1 match */
         mincontains_ok = 0;
     }
 
