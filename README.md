@@ -31,7 +31,7 @@ Supported schema keywords:
 | string      | minLength, maxLength                                                      |
 | numbers     | minimum, maximum, multipleOf, exclusiveMinimum, exclusiveMaximum          |
 | boolean     | additionalProperties, boolean schemas (`true`/`false`)                    |
-| array       | minItems, maxItems, uniqeItems, items, items (tuple), additionalItems, contains |
+| array       | minItems, maxItems, uniqueItems, items, items (tuple), additionalItems, contains |
 
 Other: $defs, definitions, $ref
 
@@ -44,10 +44,13 @@ See [jsoncdaccord.h](include/jsoncdaccord.h)
 ```C
     int jdac_validate_file(const char *jsonfile, const char *jsonschemafile);
     int jdac_validate(json_object *jobj, json_object *jschema);
+    int jdac_validate_ex(json_object *jobj, json_object *jschema, json_object **joutput_out);
     int jdac_ref_set_localpath(const char *_localpath);
 
     const char* jdac_errorstr(unsigned int jdac_errors);
 ```
+
+`jdac_validate_ex()` returns `JDAC_ERR_VALID` (0) on success or a `jdac_errors` code on failure. On success, `*joutput_out` receives a `json_object *` output tree that the **caller owns** and must free with `json_object_put()`. On failure, `*joutput_out` is unmodified.
 
 Link your binary to: `-ljsoncdac -ljson-c`
 
